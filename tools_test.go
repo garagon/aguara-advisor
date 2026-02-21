@@ -4,29 +4,9 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/garagon/aguara"
 )
-
-func TestSeverityName(t *testing.T) {
-	tests := []struct {
-		sev  int
-		want string
-	}{
-		{0, "INFO"},
-		{1, "LOW"},
-		{2, "MEDIUM"},
-		{3, "HIGH"},
-		{4, "CRITICAL"},
-		{-1, "UNKNOWN"},
-		{5, "UNKNOWN"},
-	}
-
-	for _, tt := range tests {
-		got := SeverityName(tt.sev)
-		if got != tt.want {
-			t.Errorf("SeverityName(%d) = %q, want %q", tt.sev, got, tt.want)
-		}
-	}
-}
 
 func TestFormatSummaryNoFindings(t *testing.T) {
 	got := formatSummary(0, nil)
@@ -55,10 +35,9 @@ func TestFormatSummaryMultipleFindings(t *testing.T) {
 }
 
 func TestFormatScanResultNoFindings(t *testing.T) {
-	result := &ScanResult{
+	result := &aguara.ScanResult{
 		FilesScanned: 1,
 		RulesLoaded:  138,
-		DurationMS:   5,
 	}
 
 	out := formatScanResult(result)
@@ -67,9 +46,8 @@ func TestFormatScanResultNoFindings(t *testing.T) {
 		Summary  string          `json:"summary"`
 		Findings json.RawMessage `json:"findings"`
 		Stats    struct {
-			FilesScanned int   `json:"files_scanned"`
-			RulesLoaded  int   `json:"rules_loaded"`
-			DurationMS   int64 `json:"duration_ms"`
+			FilesScanned int `json:"files_scanned"`
+			RulesLoaded  int `json:"rules_loaded"`
 		} `json:"stats"`
 	}
 
@@ -89,12 +67,12 @@ func TestFormatScanResultNoFindings(t *testing.T) {
 }
 
 func TestFormatScanResultWithFindings(t *testing.T) {
-	result := &ScanResult{
-		Findings: []Finding{
+	result := &aguara.ScanResult{
+		Findings: []aguara.Finding{
 			{
 				RuleID:      "PROMPT_INJECTION_001",
 				RuleName:    "Instruction override attempt",
-				Severity:    4,
+				Severity:    aguara.SeverityCritical,
 				Category:    "prompt-injection",
 				Description: "Detects attempts to override instructions",
 				Line:        5,
@@ -104,7 +82,7 @@ func TestFormatScanResultWithFindings(t *testing.T) {
 			{
 				RuleID:      "EXFIL_001",
 				RuleName:    "Data exfiltration URL",
-				Severity:    3,
+				Severity:    aguara.SeverityHigh,
 				Category:    "exfiltration",
 				Description: "Detects exfiltration URLs",
 				Line:        10,
@@ -114,7 +92,6 @@ func TestFormatScanResultWithFindings(t *testing.T) {
 		},
 		FilesScanned: 1,
 		RulesLoaded:  138,
-		DurationMS:   12,
 	}
 
 	out := formatScanResult(result)
@@ -183,28 +160,5 @@ func TestValidRuleID(t *testing.T) {
 		if validRuleID.MatchString(id) {
 			t.Errorf("expected %q to be invalid", id)
 		}
-	}
-}
-
-func TestLimitedBuffer(t *testing.T) {
-	lb := &limitedBuffer{max: 10}
-	n, err := lb.Write([]byte("hello"))
-	if err != nil || n != 5 {
-		t.Fatalf("Write(hello) = %d, %v", n, err)
-	}
-	n, err = lb.Write([]byte("world!!!"))
-	if err != nil || n != 5 {
-		t.Fatalf("Write(world!!!) = %d, %v; want 5, nil", n, err)
-	}
-	if lb.String() != "helloworld" {
-		t.Errorf("got %q, want %q", lb.String(), "helloworld")
-	}
-	// Further writes should be silently dropped.
-	n, err = lb.Write([]byte("overflow"))
-	if err != nil || n != 8 {
-		t.Fatalf("Write(overflow) = %d, %v; want 8, nil", n, err)
-	}
-	if lb.String() != "helloworld" {
-		t.Errorf("got %q after overflow, want %q", lb.String(), "helloworld")
 	}
 }

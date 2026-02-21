@@ -24,16 +24,13 @@ The agent doesn't know. It can't tell a helpful tool from a weaponized one. The 
 
 ## Quick start
 
-### Prerequisites
-
-Aguara MCP requires the [Aguara CLI](https://github.com/garagon/aguara) scanner. Both are single Go binaries with no external dependencies.
-
 ```bash
-go install github.com/garagon/aguara/cmd/aguara@latest
 go install github.com/garagon/aguara-mcp@latest
 ```
 
-> Make sure `$GOPATH/bin` (usually `~/go/bin`) is in your `PATH`. If not, use full paths in the commands below.
+One command, one binary, no external dependencies.
+
+> Make sure `$GOPATH/bin` (usually `~/go/bin`) is in your `PATH`.
 
 ### Add to your AI agent
 
@@ -57,7 +54,7 @@ claude mcp add aguara -- aguara-mcp
 
 **Cursor / Windsurf / any MCP client** — stdio transport with `aguara-mcp`.
 
-That's it. Your agent now has a security advisor.
+Your agent now has a security advisor.
 
 ## Tools
 
@@ -156,18 +153,17 @@ Plus NLP-based analysis for threats that evade static patterns.
 ## How it works
 
 ```
-Agent                  Aguara MCP            aguara CLI
-  │                          │                       │
-  ├─ scan_content(text) ────►│                       │
-  │                          ├─ write to temp dir ──►│
-  │                          │   tmpdir/skill.md     │
-  │                          │                       ├─ scan dir
-  │                          │                       │  138 rules
-  │                          │◄── JSON findings ─────┤
-  │                          ├─ cleanup temp dir     │
-  │◄─ structured report ─────┤                       │
-  │                          │                       │
+Agent                  Aguara MCP
+  │                          │
+  ├─ scan_content(text) ────►│
+  │                          ├─ aguara.ScanContent()
+  │                          │  (in-process, no disk I/O)
+  │                          │  138 rules · 3 analyzers
+  │◄─ structured report ─────┤
+  │                          │
 ```
+
+Aguara MCP imports the [Aguara scanner](https://github.com/garagon/aguara) as a Go library — no subprocess, no temp files, no external binary. The scan engine runs in-process with version integrity guaranteed by `go.sum`.
 
 No network access. No LLM calls. No cloud dependencies. Everything runs locally and deterministically. Scans complete in milliseconds.
 
@@ -175,19 +171,12 @@ No network access. No LLM calls. No cloud dependencies. Everything runs locally 
 
 Aguara MCP is itself security-hardened:
 
+- **No subprocess execution** — Aguara runs as an in-process Go library, eliminating PATH hijacking and binary substitution risks
 - **Input validation** — Rule IDs validated against strict format, content size capped at 10 MB
-- **No shell execution** — All subprocess calls use `exec.Command` (no shell interpolation)
 - **Filename sanitization** — Allowlisted characters only, length-capped, no path traversal
-- **Bounded buffers** — Stderr capture capped to prevent memory exhaustion
-- **Temp directory isolation** — Each scan writes to an isolated temp directory (mode 0600), cleaned up via `defer os.RemoveAll`
+- **Version integrity** — Aguara scanner version is pinned in `go.sum`, verified at build time
 
 ## Advanced
-
-If `aguara` is not in your `PATH`, point to it explicitly:
-
-```bash
-claude mcp add aguara -- aguara-mcp --aguara-path /path/to/aguara
-```
 
 Debug mode (logs scan details to stderr):
 
@@ -201,8 +190,22 @@ Build from source:
 git clone https://github.com/garagon/aguara-mcp.git
 cd aguara-mcp
 make build    # → ./aguara-mcp
-make test     # runs all tests (integration tests need aguara in PATH)
+make test     # runs all tests
 ```
+
+### Using Aguara as a Go library
+
+Aguara MCP uses the Aguara public API. You can use it in your own tools:
+
+```go
+import "github.com/garagon/aguara"
+
+result, err := aguara.ScanContent(ctx, content, "skill.md")
+rules := aguara.ListRules(aguara.WithCategory("prompt-injection"))
+detail, err := aguara.ExplainRule("PROMPT_INJECTION_001")
+```
+
+See the [Aguara documentation](https://github.com/garagon/aguara) for the full API reference.
 
 ## License
 

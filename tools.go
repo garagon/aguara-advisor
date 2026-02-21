@@ -5,10 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 	"regexp"
 	"strings"
 
+	"github.com/garagon/aguara"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 )
@@ -18,11 +18,11 @@ const maxContentSize = 10 << 20 // 10 MB
 var validRuleID = regexp.MustCompile(`^[A-Z][A-Z0-9_]{1,63}$`)
 
 // RegisterTools registers all aguara tools on the MCP server.
-func RegisterTools(s *server.MCPServer, r *Runner, debug bool) {
-	s.AddTool(scanContentTool(), handleScanContent(r, debug))
-	s.AddTool(checkMCPConfigTool(), handleCheckMCPConfig(r, debug))
-	s.AddTool(listRulesTool(), handleListRules(r))
-	s.AddTool(explainRuleTool(), handleExplainRule(r))
+func RegisterTools(s *server.MCPServer, debug bool) {
+	s.AddTool(scanContentTool(), handleScanContent(debug))
+	s.AddTool(checkMCPConfigTool(), handleCheckMCPConfig(debug))
+	s.AddTool(listRulesTool(), handleListRules())
+	s.AddTool(explainRuleTool(), handleExplainRule())
 }
 
 // --- Tool definitions ---
@@ -93,7 +93,7 @@ func explainRuleTool() mcp.Tool {
 
 // --- Tool handlers ---
 
-func handleScanContent(r *Runner, debug bool) server.ToolHandlerFunc {
+func handleScanContent(debug bool) server.ToolHandlerFunc {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		content, err := req.RequireString("content")
 		if err != nil {
@@ -106,25 +106,11 @@ func handleScanContent(r *Runner, debug bool) server.ToolHandlerFunc {
 		filename := req.GetString("filename", "skill.md")
 		filename = sanitizeFilename(filename)
 
-		// Create a temp directory with the file inside. Scanning a directory
-		// is aguara's primary path and avoids single-file edge cases.
-		tmpDir, err := os.MkdirTemp("", "aguara-scan-*")
-		if err != nil {
-			return mcp.NewToolResultError("failed to create temp directory"), nil
-		}
-		defer os.RemoveAll(tmpDir)
-
-		filePath := filepath.Join(tmpDir, filename)
-		if err := os.WriteFile(filePath, []byte(content), 0600); err != nil {
-			return mcp.NewToolResultError("failed to write temp file"), nil
-		}
-
 		if debug {
-			fmt.Fprintf(os.Stderr, "[DEBUG] scan_content: dir=%s file=%s len=%d\n", tmpDir, filename, len(content))
-			fmt.Fprintf(os.Stderr, "[DEBUG] content: %s\n", truncate(content, 500))
+			fmt.Fprintf(os.Stderr, "[DEBUG] scan_content: file=%s len=%d\n", filename, len(content))
 		}
 
-		result, err := r.Scan(ctx, tmpDir)
+		result, err := aguara.ScanContent(ctx, content, filename)
 		if err != nil {
 			return mcp.NewToolResultError(fmt.Sprintf("scan failed: %v", err)), nil
 		}
@@ -137,7 +123,7 @@ func handleScanContent(r *Runner, debug bool) server.ToolHandlerFunc {
 	}
 }
 
-func handleCheckMCPConfig(r *Runner, debug bool) server.ToolHandlerFunc {
+func handleCheckMCPConfig(debug bool) server.ToolHandlerFunc {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		config, err := req.RequireString("config")
 		if err != nil {
@@ -152,25 +138,11 @@ func handleCheckMCPConfig(r *Runner, debug bool) server.ToolHandlerFunc {
 			return mcp.NewToolResultError("config is not valid JSON"), nil
 		}
 
-		// Create a temp directory with the file inside. Scanning a directory
-		// is aguara's primary path and avoids single-file edge cases.
-		tmpDir, err := os.MkdirTemp("", "aguara-scan-*")
-		if err != nil {
-			return mcp.NewToolResultError("failed to create temp directory"), nil
-		}
-		defer os.RemoveAll(tmpDir)
-
-		filePath := filepath.Join(tmpDir, "config.json")
-		if err := os.WriteFile(filePath, []byte(config), 0600); err != nil {
-			return mcp.NewToolResultError("failed to write temp file"), nil
-		}
-
 		if debug {
-			fmt.Fprintf(os.Stderr, "[DEBUG] check_mcp_config: dir=%s len=%d\n", tmpDir, len(config))
-			fmt.Fprintf(os.Stderr, "[DEBUG] config: %s\n", truncate(config, 500))
+			fmt.Fprintf(os.Stderr, "[DEBUG] check_mcp_config: len=%d\n", len(config))
 		}
 
-		result, err := r.Scan(ctx, tmpDir)
+		result, err := aguara.ScanContent(ctx, config, "config.json")
 		if err != nil {
 			return mcp.NewToolResultError(fmt.Sprintf("scan failed: %v", err)), nil
 		}
@@ -183,23 +155,16 @@ func handleCheckMCPConfig(r *Runner, debug bool) server.ToolHandlerFunc {
 	}
 }
 
-func handleListRules(r *Runner) server.ToolHandlerFunc {
+func handleListRules() server.ToolHandlerFunc {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		rules, err := r.ListRules(ctx)
-		if err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf("list-rules failed: %v", err)), nil
+		category := req.GetString("category", "")
+
+		var opts []aguara.Option
+		if category != "" {
+			opts = append(opts, aguara.WithCategory(category))
 		}
 
-		category := req.GetString("category", "")
-		if category != "" {
-			filtered := make([]RuleInfo, 0)
-			for _, rule := range rules {
-				if strings.EqualFold(rule.Category, category) {
-					filtered = append(filtered, rule)
-				}
-			}
-			rules = filtered
-		}
+		rules := aguara.ListRules(opts...)
 
 		out, err := json.MarshalIndent(rules, "", "  ")
 		if err != nil {
@@ -210,7 +175,7 @@ func handleListRules(r *Runner) server.ToolHandlerFunc {
 	}
 }
 
-func handleExplainRule(r *Runner) server.ToolHandlerFunc {
+func handleExplainRule() server.ToolHandlerFunc {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		ruleID, err := req.RequireString("rule_id")
 		if err != nil {
@@ -220,12 +185,12 @@ func handleExplainRule(r *Runner) server.ToolHandlerFunc {
 			return mcp.NewToolResultError("invalid rule_id format: must match [A-Z][A-Z0-9_]+ (e.g., PROMPT_INJECTION_001)"), nil
 		}
 
-		info, err := r.ExplainRule(ctx, ruleID)
+		detail, err := aguara.ExplainRule(ruleID)
 		if err != nil {
 			return mcp.NewToolResultError(fmt.Sprintf("explain failed: %v", err)), nil
 		}
 
-		out, err := json.MarshalIndent(info, "", "  ")
+		out, err := json.MarshalIndent(detail, "", "  ")
 		if err != nil {
 			return mcp.NewToolResultError(fmt.Sprintf("failed to format rule info: %v", err)), nil
 		}
@@ -237,7 +202,7 @@ func handleExplainRule(r *Runner) server.ToolHandlerFunc {
 // --- Formatting helpers ---
 
 // formatScanResult produces a structured JSON response for scan results.
-func formatScanResult(result *ScanResult) string {
+func formatScanResult(result *aguara.ScanResult) string {
 	type findingOut struct {
 		Severity    string  `json:"severity"`
 		RuleID      string  `json:"rule_id"`
@@ -251,9 +216,8 @@ func formatScanResult(result *ScanResult) string {
 	}
 
 	type statsOut struct {
-		FilesScanned int   `json:"files_scanned"`
-		RulesLoaded  int   `json:"rules_loaded"`
-		DurationMS   int64 `json:"duration_ms"`
+		FilesScanned int `json:"files_scanned"`
+		RulesLoaded  int `json:"rules_loaded"`
 	}
 
 	type response struct {
@@ -266,7 +230,7 @@ func formatScanResult(result *ScanResult) string {
 	counts := make(map[string]int)
 
 	for _, f := range result.Findings {
-		sevName := SeverityName(f.Severity)
+		sevName := f.Severity.String()
 		counts[sevName]++
 		findings = append(findings, findingOut{
 			Severity:    sevName,
@@ -287,7 +251,6 @@ func formatScanResult(result *ScanResult) string {
 		Stats: statsOut{
 			FilesScanned: result.FilesScanned,
 			RulesLoaded:  result.RulesLoaded,
-			DurationMS:   result.DurationMS,
 		},
 	}
 
@@ -314,13 +277,6 @@ func formatSummary(total int, counts map[string]int) string {
 	}
 
 	return fmt.Sprintf("Found %d %s: %s", total, issue, strings.Join(parts, ", "))
-}
-
-func truncate(s string, maxLen int) string {
-	if len(s) <= maxLen {
-		return s
-	}
-	return s[:maxLen] + "..."
 }
 
 var safeFilenameChars = regexp.MustCompile(`[^a-zA-Z0-9._-]`)

@@ -5,15 +5,13 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"os/exec"
 
 	"github.com/mark3labs/mcp-go/server"
 )
 
-const version = "0.1.0"
+const version = "0.2.0"
 
 func main() {
-	aguaraPath := flag.String("aguara-path", "", "Path to aguara binary (default: search PATH)")
 	showVersion := flag.Bool("version", false, "Print version and exit")
 	debugMode := flag.Bool("debug", false, "Enable debug logging to stderr")
 	flag.Parse()
@@ -21,21 +19,6 @@ func main() {
 	if *showVersion {
 		fmt.Println("aguara-mcp", version)
 		os.Exit(0)
-	}
-
-	// Find the aguara binary.
-	binPath := *aguaraPath
-	if binPath == "" {
-		var err error
-		binPath, err = exec.LookPath("aguara")
-		if err != nil {
-			log.Fatal("aguara binary not found in PATH. Install aguara or use --aguara-path flag.")
-		}
-	}
-
-	runner, err := NewRunner(binPath)
-	if err != nil {
-		log.Fatalf("Failed to initialize aguara runner: %v", err)
 	}
 
 	// Create MCP server.
@@ -50,7 +33,7 @@ func main() {
 		),
 	)
 
-	RegisterTools(s, runner, *debugMode)
+	RegisterTools(s, *debugMode)
 
 	// Serve via stdio.
 	if err := server.ServeStdio(s); err != nil {
