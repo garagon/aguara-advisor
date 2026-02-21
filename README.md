@@ -24,19 +24,18 @@ The agent doesn't know. It can't tell a helpful tool from a weaponized one. The 
 
 ## Quick start
 
-### 1. Install Aguara
+### Prerequisites
+
+Aguara MCP requires the [Aguara CLI](https://github.com/garagon/aguara) scanner. Both are single Go binaries with no external dependencies.
 
 ```bash
 go install github.com/garagon/aguara/cmd/aguara@latest
-```
-
-### 2. Install Aguara MCP
-
-```bash
 go install github.com/garagon/aguara-mcp@latest
 ```
 
-### 3. Add to your AI agent
+> Make sure `$GOPATH/bin` (usually `~/go/bin`) is in your `PATH`. If not, use full paths in the commands below.
+
+### Add to your AI agent
 
 **Claude Code:**
 
@@ -184,13 +183,13 @@ Aguara MCP is itself security-hardened:
 
 ## Advanced
 
-Custom aguara binary path:
+If `aguara` is not in your `PATH`, point to it explicitly:
 
 ```bash
-claude mcp add aguara -- aguara-mcp --aguara-path /usr/local/bin/aguara
+claude mcp add aguara -- aguara-mcp --aguara-path /path/to/aguara
 ```
 
-Debug mode (logs scan requests to stderr):
+Debug mode (logs scan details to stderr):
 
 ```bash
 claude mcp add aguara -- aguara-mcp --debug
@@ -207,4 +206,4 @@ make test     # runs all tests (integration tests need aguara in PATH)
 
 ## License
 
-MIT
+[MIT](LICENSE)
