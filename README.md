@@ -137,22 +137,22 @@ Without Aguara MCP, the agent would have installed it silently.
 
 ## Coverage
 
-148 rules across 15 threat categories:
+148 rules across 13 threat categories:
 
 | Category | Rules | Detects |
 |----------|-------|---------|
 | Prompt injection | 17 | Instruction override, jailbreaks, role hijacking |
-| Credential leak | 17 | API keys, tokens, secrets in plain text |
+| Credential leak | 19 | API keys, tokens, secrets in plain text |
 | Exfiltration | 16 | Data sent to attacker-controlled endpoints |
-| External download | 16 | curl\|bash, remote script execution |
-| Supply chain | 14 | Dependency confusion, typosquatting |
-| Command execution | 13 | Shell injection, subprocess spawning |
-| MCP attacks | 11 | Tool poisoning, permission escalation |
+| External download | 17 | curl\|bash, remote script execution |
+| Command execution | 16 | Shell injection, subprocess spawning |
+| Supply chain | 15 | Dependency confusion, typosquatting |
+| MCP attacks | 12 | Tool poisoning, permission escalation |
+| SSRF / Cloud | 10 | Metadata endpoint access, SSRF patterns |
 | MCP config | 8 | Insecure server configurations |
-| SSRF / Cloud | 8 | Metadata endpoint access, SSRF patterns |
-| Indirect injection | 7 | Injection via external content |
 | Unicode attacks | 7 | Homoglyphs, bidi overrides, invisible chars |
-| Third-party content | 4 | Unvalidated external data consumption |
+| Indirect injection | 6 | Injection via external content |
+| Third-party content | 5 | Unvalidated external data consumption |
 
 Plus NLP-based analysis for threats that evade static patterns.
 
