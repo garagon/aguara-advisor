@@ -9,7 +9,7 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 )
 
-const version = "0.2.0"
+var version = "dev" // set by goreleaser ldflags
 
 func main() {
 	showVersion := flag.Bool("version", false, "Print version and exit")

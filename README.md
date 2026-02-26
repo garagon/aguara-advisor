@@ -4,7 +4,7 @@
 
 Aguara MCP is an [MCP server](https://modelcontextprotocol.io/) that gives AI agents the ability to scan skills, plugins, and MCP configurations for security threats — before installing or running them.
 
-Powered by [Aguara](https://github.com/garagon/aguara), the open-source security scanner purpose-built for the AI agent ecosystem. 138 rules, 15 threat categories, zero network access, fully deterministic.
+Powered by [Aguara](https://github.com/garagon/aguara), the open-source security scanner purpose-built for the AI agent ecosystem. 148 rules, 15 threat categories, zero network access, fully deterministic.
 
 ## The problem
 
@@ -25,12 +25,18 @@ The agent doesn't know. It can't tell a helpful tool from a weaponized one. The 
 ## Quick start
 
 ```bash
+curl -fsSL https://raw.githubusercontent.com/garagon/aguara-mcp/main/install.sh | sh
+```
+
+Or with Go:
+
+```bash
 go install github.com/garagon/aguara-mcp@latest
 ```
 
 One command, one binary, no external dependencies.
 
-> Make sure `$GOPATH/bin` (usually `~/go/bin`) is in your `PATH`.
+> Make sure the install directory (`~/.local/bin` or `$GOPATH/bin`) is in your `PATH`.
 
 ### Add to your AI agent
 
@@ -131,7 +137,7 @@ Without Aguara MCP, the agent would have installed it silently.
 
 ## Coverage
 
-138 rules across 15 threat categories:
+148 rules across 15 threat categories:
 
 | Category | Rules | Detects |
 |----------|-------|---------|
@@ -158,7 +164,7 @@ Agent                  Aguara MCP
   ├─ scan_content(text) ────►│
   │                          ├─ aguara.ScanContent()
   │                          │  (in-process, no disk I/O)
-  │                          │  138 rules · 3 analyzers
+  │                          │  148 rules · 3 analyzers
   │◄─ structured report ─────┤
   │                          │
 ```
@@ -168,6 +174,8 @@ Aguara MCP imports the [Aguara scanner](https://github.com/garagon/aguara) as a 
 No network access. No LLM calls. No cloud dependencies. Everything runs locally and deterministically. Scans complete in milliseconds.
 
 ## Security
+
+See [SECURITY.md](SECURITY.md) for the vulnerability disclosure policy.
 
 Aguara MCP is itself security-hardened:
 
