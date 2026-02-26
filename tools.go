@@ -7,11 +7,14 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/garagon/aguara"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 )
+
+const scanTimeout = 30 * time.Second
 
 const maxContentSize = 10 << 20 // 10 MB
 
@@ -110,9 +113,18 @@ func handleScanContent(debug bool) server.ToolHandlerFunc {
 			fmt.Fprintf(os.Stderr, "[DEBUG] scan_content: file=%s len=%d\n", filename, len(content))
 		}
 
+		if _, ok := ctx.Deadline(); !ok {
+			var cancel context.CancelFunc
+			ctx, cancel = context.WithTimeout(ctx, scanTimeout)
+			defer cancel()
+		}
+
 		result, err := aguara.ScanContent(ctx, content, filename)
 		if err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf("scan failed: %v", err)), nil
+			if debug {
+				fmt.Fprintf(os.Stderr, "[DEBUG] scan_content error: %v\n", err)
+			}
+			return mcp.NewToolResultError("scan failed"), nil
 		}
 
 		if debug {
@@ -142,9 +154,18 @@ func handleCheckMCPConfig(debug bool) server.ToolHandlerFunc {
 			fmt.Fprintf(os.Stderr, "[DEBUG] check_mcp_config: len=%d\n", len(config))
 		}
 
+		if _, ok := ctx.Deadline(); !ok {
+			var cancel context.CancelFunc
+			ctx, cancel = context.WithTimeout(ctx, scanTimeout)
+			defer cancel()
+		}
+
 		result, err := aguara.ScanContent(ctx, config, "config.json")
 		if err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf("scan failed: %v", err)), nil
+			if debug {
+				fmt.Fprintf(os.Stderr, "[DEBUG] check_mcp_config error: %v\n", err)
+			}
+			return mcp.NewToolResultError("scan failed"), nil
 		}
 
 		if debug {
@@ -168,7 +189,7 @@ func handleListRules() server.ToolHandlerFunc {
 
 		out, err := json.MarshalIndent(rules, "", "  ")
 		if err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf("failed to format rules: %v", err)), nil
+			return mcp.NewToolResultError("failed to format rules"), nil
 		}
 
 		return mcp.NewToolResultText(string(out)), nil
@@ -187,12 +208,12 @@ func handleExplainRule() server.ToolHandlerFunc {
 
 		detail, err := aguara.ExplainRule(ruleID)
 		if err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf("explain failed: %v", err)), nil
+			return mcp.NewToolResultError(fmt.Sprintf("rule %s not found", ruleID)), nil
 		}
 
 		out, err := json.MarshalIndent(detail, "", "  ")
 		if err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf("failed to format rule info: %v", err)), nil
+			return mcp.NewToolResultError("failed to format rule info"), nil
 		}
 
 		return mcp.NewToolResultText(string(out)), nil
