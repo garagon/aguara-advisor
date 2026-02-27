@@ -2,7 +2,7 @@
 
 **Security advisor for AI agents.**
 
-Aguara MCP is an [MCP server](https://modelcontextprotocol.io/) that gives AI agents the ability to scan skills, plugins, and MCP configurations for security threats — before installing or running them.
+Aguara MCP is an [MCP server](https://modelcontextprotocol.io/) that gives AI agents the ability to scan skills, plugins, and MCP configurations for security threats — before installing or running them. Built on the [official MCP SDK](https://github.com/modelcontextprotocol/go-sdk) (v1, Tier 1).
 
 Powered by [Aguara](https://github.com/garagon/aguara), the open-source security scanner purpose-built for the AI agent ecosystem. 148 rules, 15 threat categories, zero network access, fully deterministic.
 
@@ -170,6 +170,8 @@ Agent                  Aguara MCP
 ```
 
 Aguara MCP imports the [Aguara scanner](https://github.com/garagon/aguara) as a Go library — no subprocess, no temp files, no external binary. The scan engine runs in-process with version integrity guaranteed by `go.sum`.
+
+The MCP protocol layer uses the [official Go SDK](https://github.com/modelcontextprotocol/go-sdk) (Tier 1, Linux Foundation governance, v1 semver stability). This ensures protocol compliance and long-term compatibility as the MCP specification evolves.
 
 No network access. No LLM calls. No cloud dependencies. Everything runs locally and deterministically. Scans complete in milliseconds.
 
