@@ -10,8 +10,7 @@ import (
 	"time"
 
 	"github.com/garagon/aguara"
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 const scanTimeout = 30 * time.Second
@@ -21,7 +20,7 @@ const maxContentSize = 10 << 20 // 10 MB
 var validRuleID = regexp.MustCompile(`^[A-Z][A-Z0-9_]{1,63}$`)
 
 // RegisterTools registers all aguara tools on the MCP server.
-func RegisterTools(s *server.MCPServer, debug bool) {
+func RegisterTools(s *mcp.Server, debug bool) {
 	s.AddTool(scanContentTool(), handleScanContent(debug))
 	s.AddTool(checkMCPConfigTool(), handleCheckMCPConfig(debug))
 	s.AddTool(listRulesTool(), handleListRules())
@@ -30,83 +29,136 @@ func RegisterTools(s *server.MCPServer, debug bool) {
 
 // --- Tool definitions ---
 
-func scanContentTool() mcp.Tool {
-	return mcp.NewTool("scan_content",
-		mcp.WithDescription(
-			"Scan the content of an AI agent skill or MCP server description for security issues. "+
-				"Checks for prompt injection, credential leaks, exfiltration, command execution, and more.",
-		),
-		mcp.WithString("content",
-			mcp.Required(),
-			mcp.Description("The text content to scan (e.g., skill description, README, tool definition)"),
-		),
-		mcp.WithString("filename",
-			mcp.Description("Filename hint for the content (affects rule matching). Default: skill.md"),
-		),
-		mcp.WithReadOnlyHintAnnotation(true),
-		mcp.WithDestructiveHintAnnotation(false),
-		mcp.WithOpenWorldHintAnnotation(false),
-	)
+func boolPtr(b bool) *bool { return &b }
+
+func prop(typ, desc string) map[string]any {
+	return map[string]any{"type": typ, "description": desc}
 }
 
-func checkMCPConfigTool() mcp.Tool {
-	return mcp.NewTool("check_mcp_config",
-		mcp.WithDescription(
-			"Check an MCP server configuration (JSON) for security issues. "+
-				"Detects dangerous command patterns, credential exposure, and unsafe settings.",
-		),
-		mcp.WithString("config",
-			mcp.Required(),
-			mcp.Description("The MCP configuration as a JSON string"),
-		),
-		mcp.WithReadOnlyHintAnnotation(true),
-		mcp.WithDestructiveHintAnnotation(false),
-		mcp.WithOpenWorldHintAnnotation(false),
-	)
+func scanContentTool() *mcp.Tool {
+	return &mcp.Tool{
+		Name: "scan_content",
+		Description: "Scan the content of an AI agent skill or MCP server description for security issues. " +
+			"Checks for prompt injection, credential leaks, exfiltration, command execution, and more.",
+		InputSchema: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"content":  prop("string", "The text content to scan (e.g., skill description, README, tool definition)"),
+				"filename": prop("string", "Filename hint for the content (affects rule matching). Default: skill.md"),
+			},
+			"required": []string{"content"},
+		},
+		Annotations: &mcp.ToolAnnotations{
+			ReadOnlyHint:    true,
+			DestructiveHint: boolPtr(false),
+			OpenWorldHint:   boolPtr(false),
+		},
+	}
 }
 
-func listRulesTool() mcp.Tool {
-	return mcp.NewTool("list_rules",
-		mcp.WithDescription(
-			"List available security rules. Optionally filter by category.",
-		),
-		mcp.WithString("category",
-			mcp.Description("Filter rules by category (e.g., prompt-injection, exfiltration, credential-leak)"),
-		),
-		mcp.WithReadOnlyHintAnnotation(true),
-		mcp.WithDestructiveHintAnnotation(false),
-		mcp.WithOpenWorldHintAnnotation(false),
-	)
+func checkMCPConfigTool() *mcp.Tool {
+	return &mcp.Tool{
+		Name: "check_mcp_config",
+		Description: "Check an MCP server configuration (JSON) for security issues. " +
+			"Detects dangerous command patterns, credential exposure, and unsafe settings.",
+		InputSchema: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"config": prop("string", "The MCP configuration as a JSON string"),
+			},
+			"required": []string{"config"},
+		},
+		Annotations: &mcp.ToolAnnotations{
+			ReadOnlyHint:    true,
+			DestructiveHint: boolPtr(false),
+			OpenWorldHint:   boolPtr(false),
+		},
+	}
 }
 
-func explainRuleTool() mcp.Tool {
-	return mcp.NewTool("explain_rule",
-		mcp.WithDescription(
-			"Get detailed information about a specific security rule, including its patterns and examples.",
-		),
-		mcp.WithString("rule_id",
-			mcp.Required(),
-			mcp.Description("The rule ID to explain (e.g., PROMPT_INJECTION_001)"),
-		),
-		mcp.WithReadOnlyHintAnnotation(true),
-		mcp.WithDestructiveHintAnnotation(false),
-		mcp.WithOpenWorldHintAnnotation(false),
-	)
+func listRulesTool() *mcp.Tool {
+	return &mcp.Tool{
+		Name:        "list_rules",
+		Description: "List available security rules. Optionally filter by category.",
+		InputSchema: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"category": prop("string", "Filter rules by category (e.g., prompt-injection, exfiltration, credential-leak)"),
+			},
+		},
+		Annotations: &mcp.ToolAnnotations{
+			ReadOnlyHint:    true,
+			DestructiveHint: boolPtr(false),
+			OpenWorldHint:   boolPtr(false),
+		},
+	}
+}
+
+func explainRuleTool() *mcp.Tool {
+	return &mcp.Tool{
+		Name:        "explain_rule",
+		Description: "Get detailed information about a specific security rule, including its patterns and examples.",
+		InputSchema: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"rule_id": prop("string", "The rule ID to explain (e.g., PROMPT_INJECTION_001)"),
+			},
+			"required": []string{"rule_id"},
+		},
+		Annotations: &mcp.ToolAnnotations{
+			ReadOnlyHint:    true,
+			DestructiveHint: boolPtr(false),
+			OpenWorldHint:   boolPtr(false),
+		},
+	}
+}
+
+// --- Argument helpers ---
+
+func getString(raw json.RawMessage, key, defaultVal string) string {
+	if len(raw) == 0 {
+		return defaultVal
+	}
+	var m map[string]any
+	if err := json.Unmarshal(raw, &m); err != nil {
+		return defaultVal
+	}
+	v, ok := m[key]
+	if !ok {
+		return defaultVal
+	}
+	s, ok := v.(string)
+	if !ok {
+		return defaultVal
+	}
+	return s
+}
+
+func newToolResultText(text string) *mcp.CallToolResult {
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{&mcp.TextContent{Text: text}},
+	}
+}
+
+func newToolResultError(msg string) *mcp.CallToolResult {
+	var r mcp.CallToolResult
+	r.SetError(fmt.Errorf("%s", msg))
+	return &r
 }
 
 // --- Tool handlers ---
 
-func handleScanContent(debug bool) server.ToolHandlerFunc {
-	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		content, err := req.RequireString("content")
-		if err != nil {
-			return mcp.NewToolResultError("content parameter is required"), nil
+func handleScanContent(debug bool) mcp.ToolHandler {
+	return func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		content := getString(req.Params.Arguments, "content", "")
+		if content == "" {
+			return newToolResultError("content parameter is required"), nil
 		}
 		if len(content) > maxContentSize {
-			return mcp.NewToolResultError(fmt.Sprintf("content too large: %d bytes (max %d)", len(content), maxContentSize)), nil
+			return newToolResultError(fmt.Sprintf("content too large: %d bytes (max %d)", len(content), maxContentSize)), nil
 		}
 
-		filename := req.GetString("filename", "skill.md")
+		filename := getString(req.Params.Arguments, "filename", "skill.md")
 		filename = sanitizeFilename(filename)
 
 		if debug {
@@ -124,30 +176,30 @@ func handleScanContent(debug bool) server.ToolHandlerFunc {
 			if debug {
 				fmt.Fprintf(os.Stderr, "[DEBUG] scan_content error: %v\n", err)
 			}
-			return mcp.NewToolResultError("scan failed"), nil
+			return newToolResultError("scan failed"), nil
 		}
 
 		if debug {
 			fmt.Fprintf(os.Stderr, "[DEBUG] scan result: %d findings\n", len(result.Findings))
 		}
 
-		return mcp.NewToolResultText(formatScanResult(result)), nil
+		return newToolResultText(formatScanResult(result)), nil
 	}
 }
 
-func handleCheckMCPConfig(debug bool) server.ToolHandlerFunc {
-	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		config, err := req.RequireString("config")
-		if err != nil {
-			return mcp.NewToolResultError("config parameter is required"), nil
+func handleCheckMCPConfig(debug bool) mcp.ToolHandler {
+	return func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		config := getString(req.Params.Arguments, "config", "")
+		if config == "" {
+			return newToolResultError("config parameter is required"), nil
 		}
 		if len(config) > maxContentSize {
-			return mcp.NewToolResultError(fmt.Sprintf("config too large: %d bytes (max %d)", len(config), maxContentSize)), nil
+			return newToolResultError(fmt.Sprintf("config too large: %d bytes (max %d)", len(config), maxContentSize)), nil
 		}
 
 		// Validate it's valid JSON.
 		if !json.Valid([]byte(config)) {
-			return mcp.NewToolResultError("config is not valid JSON"), nil
+			return newToolResultError("config is not valid JSON"), nil
 		}
 
 		if debug {
@@ -165,20 +217,20 @@ func handleCheckMCPConfig(debug bool) server.ToolHandlerFunc {
 			if debug {
 				fmt.Fprintf(os.Stderr, "[DEBUG] check_mcp_config error: %v\n", err)
 			}
-			return mcp.NewToolResultError("scan failed"), nil
+			return newToolResultError("scan failed"), nil
 		}
 
 		if debug {
 			fmt.Fprintf(os.Stderr, "[DEBUG] scan result: %d findings\n", len(result.Findings))
 		}
 
-		return mcp.NewToolResultText(formatScanResult(result)), nil
+		return newToolResultText(formatScanResult(result)), nil
 	}
 }
 
-func handleListRules() server.ToolHandlerFunc {
-	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		category := req.GetString("category", "")
+func handleListRules() mcp.ToolHandler {
+	return func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		category := getString(req.Params.Arguments, "category", "")
 
 		var opts []aguara.Option
 		if category != "" {
@@ -189,34 +241,34 @@ func handleListRules() server.ToolHandlerFunc {
 
 		out, err := json.MarshalIndent(rules, "", "  ")
 		if err != nil {
-			return mcp.NewToolResultError("failed to format rules"), nil
+			return newToolResultError("failed to format rules"), nil
 		}
 
-		return mcp.NewToolResultText(string(out)), nil
+		return newToolResultText(string(out)), nil
 	}
 }
 
-func handleExplainRule() server.ToolHandlerFunc {
-	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		ruleID, err := req.RequireString("rule_id")
-		if err != nil {
-			return mcp.NewToolResultError("rule_id parameter is required"), nil
+func handleExplainRule() mcp.ToolHandler {
+	return func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		ruleID := getString(req.Params.Arguments, "rule_id", "")
+		if ruleID == "" {
+			return newToolResultError("rule_id parameter is required"), nil
 		}
 		if !validRuleID.MatchString(ruleID) {
-			return mcp.NewToolResultError("invalid rule_id format: must match [A-Z][A-Z0-9_]+ (e.g., PROMPT_INJECTION_001)"), nil
+			return newToolResultError("invalid rule_id format: must match [A-Z][A-Z0-9_]+ (e.g., PROMPT_INJECTION_001)"), nil
 		}
 
 		detail, err := aguara.ExplainRule(ruleID)
 		if err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf("rule %s not found", ruleID)), nil
+			return newToolResultError(fmt.Sprintf("rule %s not found", ruleID)), nil
 		}
 
 		out, err := json.MarshalIndent(detail, "", "  ")
 		if err != nil {
-			return mcp.NewToolResultError("failed to format rule info"), nil
+			return newToolResultError("failed to format rule info"), nil
 		}
 
-		return mcp.NewToolResultText(string(out)), nil
+		return newToolResultText(string(out)), nil
 	}
 }
 
