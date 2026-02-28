@@ -1,2 +1,9 @@
 aguara-mcp
 .claude/
+CLAUDE.md
+
+# Tokens and secrets
+.mcpregistry_*_token
+*.token
+.env
+.env.*
