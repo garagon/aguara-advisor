@@ -3,7 +3,7 @@ module github.com/garagon/aguara-mcp
 go 1.25.0
 
 require (
-	github.com/garagon/aguara v0.6.0
+	github.com/garagon/aguara v0.7.0
 	github.com/modelcontextprotocol/go-sdk v1.4.0
 )
 
