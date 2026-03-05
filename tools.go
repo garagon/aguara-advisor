@@ -25,6 +25,7 @@ func RegisterTools(s *mcp.Server, debug bool) {
 	s.AddTool(checkMCPConfigTool(), handleCheckMCPConfig(debug))
 	s.AddTool(listRulesTool(), handleListRules())
 	s.AddTool(explainRuleTool(), handleExplainRule())
+	s.AddTool(discoverMCPTool(), handleDiscoverMCP(debug))
 }
 
 // --- Tool definitions ---
@@ -43,8 +44,10 @@ func scanContentTool() *mcp.Tool {
 		InputSchema: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
-				"content":  prop("string", "The text content to scan (e.g., skill description, README, tool definition)"),
-				"filename": prop("string", "Filename hint for the content (affects rule matching). Default: skill.md"),
+				"content":        prop("string", "The text content to scan (e.g., skill description, README, tool definition)"),
+				"filename":       prop("string", "Filename hint for the content (affects rule matching). Default: skill.md"),
+				"min_severity":   prop("string", "Minimum severity to report: INFO, LOW, MEDIUM, HIGH, or CRITICAL"),
+				"disabled_rules": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "List of rule IDs to disable (e.g., [\"PROMPT_INJECTION_001\"])"},
 			},
 			"required": []string{"content"},
 		},
@@ -64,7 +67,9 @@ func checkMCPConfigTool() *mcp.Tool {
 		InputSchema: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
-				"config": prop("string", "The MCP configuration as a JSON string"),
+				"config":         prop("string", "The MCP configuration as a JSON string"),
+				"min_severity":   prop("string", "Minimum severity to report: INFO, LOW, MEDIUM, HIGH, or CRITICAL"),
+				"disabled_rules": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "List of rule IDs to disable (e.g., [\"PROMPT_INJECTION_001\"])"},
 			},
 			"required": []string{"config"},
 		},
@@ -113,6 +118,24 @@ func explainRuleTool() *mcp.Tool {
 	}
 }
 
+func discoverMCPTool() *mcp.Tool {
+	return &mcp.Tool{
+		Name: "discover_mcp",
+		Description: "Discover MCP server configurations on the local machine. " +
+			"Finds all known MCP client config files (Claude Desktop, Cursor, VS Code, etc.) " +
+			"and extracts the server definitions, including commands, arguments, and environment variables.",
+		InputSchema: map[string]any{
+			"type":       "object",
+			"properties": map[string]any{},
+		},
+		Annotations: &mcp.ToolAnnotations{
+			ReadOnlyHint:    true,
+			DestructiveHint: boolPtr(false),
+			OpenWorldHint:   boolPtr(false),
+		},
+	}
+}
+
 // --- Argument helpers ---
 
 func getString(raw json.RawMessage, key, defaultVal string) string {
@@ -132,6 +155,52 @@ func getString(raw json.RawMessage, key, defaultVal string) string {
 		return defaultVal
 	}
 	return s
+}
+
+func getStringSlice(raw json.RawMessage, key string) []string {
+	if len(raw) == 0 {
+		return nil
+	}
+	var m map[string]any
+	if err := json.Unmarshal(raw, &m); err != nil {
+		return nil
+	}
+	v, ok := m[key]
+	if !ok {
+		return nil
+	}
+	arr, ok := v.([]any)
+	if !ok {
+		return nil
+	}
+	var result []string
+	for _, item := range arr {
+		if s, ok := item.(string); ok {
+			result = append(result, s)
+		}
+	}
+	return result
+}
+
+var severityMap = map[string]aguara.Severity{
+	"INFO":     aguara.SeverityInfo,
+	"LOW":      aguara.SeverityLow,
+	"MEDIUM":   aguara.SeverityMedium,
+	"HIGH":     aguara.SeverityHigh,
+	"CRITICAL": aguara.SeverityCritical,
+}
+
+func buildScanOpts(args json.RawMessage) []aguara.Option {
+	var opts []aguara.Option
+	if sev := getString(args, "min_severity", ""); sev != "" {
+		if s, ok := severityMap[strings.ToUpper(sev)]; ok {
+			opts = append(opts, aguara.WithMinSeverity(s))
+		}
+	}
+	if disabled := getStringSlice(args, "disabled_rules"); len(disabled) > 0 {
+		opts = append(opts, aguara.WithDisabledRules(disabled...))
+	}
+	return opts
 }
 
 func newToolResultText(text string) *mcp.CallToolResult {
@@ -171,7 +240,8 @@ func handleScanContent(debug bool) mcp.ToolHandler {
 			defer cancel()
 		}
 
-		result, err := aguara.ScanContent(ctx, content, filename)
+		opts := buildScanOpts(req.Params.Arguments)
+		result, err := aguara.ScanContent(ctx, content, filename, opts...)
 		if err != nil {
 			if debug {
 				fmt.Fprintf(os.Stderr, "[DEBUG] scan_content error: %v\n", err)
@@ -212,7 +282,8 @@ func handleCheckMCPConfig(debug bool) mcp.ToolHandler {
 			defer cancel()
 		}
 
-		result, err := aguara.ScanContent(ctx, config, "config.json")
+		opts := buildScanOpts(req.Params.Arguments)
+		result, err := aguara.ScanContent(ctx, config, "config.json", opts...)
 		if err != nil {
 			if debug {
 				fmt.Fprintf(os.Stderr, "[DEBUG] check_mcp_config error: %v\n", err)
@@ -272,6 +343,34 @@ func handleExplainRule() mcp.ToolHandler {
 	}
 }
 
+func handleDiscoverMCP(debug bool) mcp.ToolHandler {
+	return func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		if debug {
+			fmt.Fprintf(os.Stderr, "[DEBUG] discover_mcp: scanning local configs\n")
+		}
+
+		result, err := aguara.Discover()
+		if err != nil {
+			if debug {
+				fmt.Fprintf(os.Stderr, "[DEBUG] discover_mcp error: %v\n", err)
+			}
+			return newToolResultError("discovery failed"), nil
+		}
+
+		if debug {
+			fmt.Fprintf(os.Stderr, "[DEBUG] discover_mcp: found %d servers across %d clients\n",
+				result.TotalServers(), result.TotalClients())
+		}
+
+		out, err := json.MarshalIndent(result, "", "  ")
+		if err != nil {
+			return newToolResultError("failed to format discovery results"), nil
+		}
+
+		return newToolResultText(string(out)), nil
+	}
+}
+
 // --- Formatting helpers ---
 
 // formatScanResult produces a structured JSON response for scan results.
@@ -283,9 +382,12 @@ func formatScanResult(result *aguara.ScanResult) string {
 		RuleName    string  `json:"rule_name"`
 		Description string  `json:"description"`
 		Line        int     `json:"line"`
+		Column      int     `json:"column,omitempty"`
 		MatchedText string  `json:"matched_text"`
 		InCodeBlock bool    `json:"in_code_block"`
 		Score       float64 `json:"score"`
+		Confidence  float64 `json:"confidence,omitempty"`
+		Analyzer    string  `json:"analyzer,omitempty"`
 	}
 
 	type statsOut struct {
@@ -312,9 +414,12 @@ func formatScanResult(result *aguara.ScanResult) string {
 			RuleName:    f.RuleName,
 			Description: f.Description,
 			Line:        f.Line,
+			Column:      f.Column,
 			MatchedText: f.MatchedText,
 			InCodeBlock: f.InCodeBlock,
 			Score:       f.Score,
+			Confidence:  f.Confidence,
+			Analyzer:    f.Analyzer,
 		})
 	}
 

@@ -147,6 +147,107 @@ func TestSanitizeFilename(t *testing.T) {
 	}
 }
 
+func TestFormatScanResultNewFields(t *testing.T) {
+	result := &aguara.ScanResult{
+		Findings: []aguara.Finding{
+			{
+				RuleID:      "NLP_PROMPT_INJECTION",
+				RuleName:    "NLP prompt injection",
+				Severity:    aguara.SeverityCritical,
+				Category:    "prompt-injection",
+				Description: "NLP-detected injection",
+				Line:        3,
+				Column:      15,
+				MatchedText: "ignore previous instructions",
+				Score:       80,
+				Confidence:  0.95,
+				Analyzer:    "nlp",
+			},
+		},
+		FilesScanned: 1,
+		RulesLoaded:  160,
+	}
+
+	out := formatScanResult(result)
+
+	var resp struct {
+		Findings []struct {
+			Column     int     `json:"column"`
+			Confidence float64 `json:"confidence"`
+			Analyzer   string  `json:"analyzer"`
+		} `json:"findings"`
+	}
+
+	if err := json.Unmarshal([]byte(out), &resp); err != nil {
+		t.Fatalf("failed to parse output: %v", err)
+	}
+
+	if len(resp.Findings) != 1 {
+		t.Fatalf("expected 1 finding, got %d", len(resp.Findings))
+	}
+
+	f := resp.Findings[0]
+	if f.Column != 15 {
+		t.Errorf("column = %d, want 15", f.Column)
+	}
+	if f.Confidence != 0.95 {
+		t.Errorf("confidence = %f, want 0.95", f.Confidence)
+	}
+	if f.Analyzer != "nlp" {
+		t.Errorf("analyzer = %q, want nlp", f.Analyzer)
+	}
+}
+
+func TestGetStringSlice(t *testing.T) {
+	raw := json.RawMessage(`{"rules": ["RULE_001", "RULE_002"], "other": "text"}`)
+
+	got := getStringSlice(raw, "rules")
+	if len(got) != 2 || got[0] != "RULE_001" || got[1] != "RULE_002" {
+		t.Errorf("getStringSlice(rules) = %v, want [RULE_001 RULE_002]", got)
+	}
+
+	got = getStringSlice(raw, "missing")
+	if got != nil {
+		t.Errorf("getStringSlice(missing) = %v, want nil", got)
+	}
+
+	got = getStringSlice(raw, "other")
+	if got != nil {
+		t.Errorf("getStringSlice(other) = %v, want nil", got)
+	}
+
+	got = getStringSlice(nil, "rules")
+	if got != nil {
+		t.Errorf("getStringSlice(nil) = %v, want nil", got)
+	}
+}
+
+func TestBuildScanOpts(t *testing.T) {
+	// No options
+	opts := buildScanOpts(json.RawMessage(`{}`))
+	if len(opts) != 0 {
+		t.Errorf("expected 0 opts, got %d", len(opts))
+	}
+
+	// With min_severity
+	opts = buildScanOpts(json.RawMessage(`{"min_severity": "HIGH"}`))
+	if len(opts) != 1 {
+		t.Errorf("expected 1 opt for min_severity, got %d", len(opts))
+	}
+
+	// With disabled_rules
+	opts = buildScanOpts(json.RawMessage(`{"disabled_rules": ["RULE_001"]}`))
+	if len(opts) != 1 {
+		t.Errorf("expected 1 opt for disabled_rules, got %d", len(opts))
+	}
+
+	// Invalid severity ignored
+	opts = buildScanOpts(json.RawMessage(`{"min_severity": "INVALID"}`))
+	if len(opts) != 0 {
+		t.Errorf("expected 0 opts for invalid severity, got %d", len(opts))
+	}
+}
+
 func TestValidRuleID(t *testing.T) {
 	valid := []string{"PROMPT_INJECTION_001", "EXFIL_007", "CRED_001", "A1", "NLP_PROMPT_INJECTION"}
 	for _, id := range valid {
